@@ -1,0 +1,8 @@
+librosa
+pandas
+scikit-learn
+tensorflow-cpu
+keras
+tqdm
+fastapi[standard]
+pydub
