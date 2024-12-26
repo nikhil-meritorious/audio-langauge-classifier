@@ -4,6 +4,7 @@ import pandas as pd
 import joblib
 from pydub import AudioSegment
 import os
+from keras import models
 
 def convert_wav(file_path: str) -> str | None:
     try:
@@ -57,7 +58,7 @@ def extract_audio_features(file_path: str) -> pd.DataFrame | None:
     
 def predict_audio_accent(file_path: str) -> str | None:
     try:
-        model = joblib.load('model/accent_predictor_model.pkl')
+        model = models.load_model('model/accent_predictor_model.keras')
         scaler = joblib.load('model/scaler.pkl')
         label_encoder = joblib.load('model/label_encoder.pkl')
 
@@ -66,7 +67,7 @@ def predict_audio_accent(file_path: str) -> str | None:
         new_audio_features_scaled = scaler.transform(new_audio_features)
 
         predicted_class = model.predict(new_audio_features_scaled)
-        predicted_accent = label_encoder.inverse_transform(predicted_class)
+        predicted_accent = label_encoder.inverse_transform(np.argmax(predicted_class, axis=1))
 
         print(f"The predicted accent is: {predicted_accent[0].capitalize()}")
         return predicted_accent[0].capitalize()
@@ -76,10 +77,6 @@ def predict_audio_accent(file_path: str) -> str | None:
         return None
 
 if __name__ == '__main__':
-    model = joblib.load('model/accent_predictor_model.pkl')
-    scaler = joblib.load('model/scaler.pkl')
-    label_encoder = joblib.load('model/label_encoder.pkl')
-
     file_path = 'input_files/nz.wav'
     predicted_accent = predict_audio_accent(file_path)
 

@@ -1,3 +1,5 @@
 venv
 **.pyc
 **.wav
+*.pkl
+*.keras

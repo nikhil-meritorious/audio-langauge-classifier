@@ -69,6 +69,6 @@ def extract_features(directory: str) -> pd.DataFrame | None:
 
 if __name__ == '__main__':
     feature_df = extract_features('data/audio_samples')
-    feature_df = shuffle(feature_df)
+    # feature_df = shuffle(feature_df)
     feature_df.to_csv("data/csv_files/sample_audio_features.csv", index=False)
     train_audio_model()
