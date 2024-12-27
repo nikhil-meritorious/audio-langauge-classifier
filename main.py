@@ -26,7 +26,7 @@ def root():
     return {"message": "Welcome to the audio accent classification api"}
 
 @app.post("/api/upload-file")
-def upload_file(audio_file: UploadFile = File(...)):
+async def upload_file(audio_file: UploadFile = File(...)):
     try:
         if audio_file.filename.split(".")[-1].lower() not in valid_extenstions:
             return JSONResponse(
@@ -45,13 +45,13 @@ def upload_file(audio_file: UploadFile = File(...)):
         predicted_accent, predicted_precent = predict_audio_accent(file_path)
 
         return JSONResponse(
-            status_code=status.HTTP_201_CREATED,
+            status_code=status.HTTP_200_OK,
             content={
                 "success": True,
                 "message": "Audio classification successful",
                 "data": {
                     "predicted_accent": predicted_accent if predicted_accent else "Unkown",
-                    "accuracy": predicted_precent
+                    "accuracy": f"{predicted_precent:.2f}%"
                 }
             }
         )
