@@ -1,3 +1,5 @@
+from transformers import Wav2Vec2Processor, Wav2Vec2Model
+import torch
 import librosa
 import numpy as np
 import pandas as pd
@@ -5,6 +7,9 @@ import joblib
 from pydub import AudioSegment
 import os
 from keras import models
+
+processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
+pre_trained_model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base-960h")
 
 def convert_wav(file_path: str) -> str | None:
     try:
@@ -23,34 +28,18 @@ def extract_audio_features(file_path: str) -> pd.DataFrame | None:
             mp3_file_path = file_path.split(".wav")[0] + ".mp3"
             os.remove(mp3_file_path)
 
-        audio, sample_rate = librosa.load(file_path, sr=22050)
+        audio, sample_rate = librosa.load(file_path, sr=16000)  # Match Wav2Vec2's 16kHz sample rate
 
-        mfccs = librosa.feature.mfcc(y=audio, sr=sample_rate, n_mfcc=40)
-        mfcc_mean = np.mean(mfccs.T, axis=0)
+        inputs = processor(audio, sampling_rate=16000, return_tensors="pt", padding=True)
 
-        spectral_centroid = np.mean(librosa.feature.spectral_centroid(y=audio, sr=sample_rate)[0])
-        zero_crossing_rate = np.mean(librosa.feature.zero_crossing_rate(audio)[0])
+        with torch.no_grad():
+            outputs = pre_trained_model(**inputs)
+            embeddings = outputs.last_hidden_state
 
-        spectral_contrast_mean = np.mean(librosa.feature.spectral_contrast(y=audio, sr=sample_rate, n_bands=5), axis=1)
-        chroma_mean = np.mean(librosa.feature.chroma_stft(y=audio, sr=sample_rate), axis=1)
+        feature_vector = torch.mean(embeddings, dim=1).squeeze().numpy()
 
-        rms = np.mean(librosa.feature.rms(y=audio)[0])
-        spectral_bandwidth = np.mean(librosa.feature.spectral_bandwidth(y=audio, sr=sample_rate))
-
-        mel_spectrogram = np.mean(librosa.feature.melspectrogram(y=audio, sr=sample_rate, n_mels=128), axis=1)
-
-        tonnetz = np.mean(librosa.feature.tonnetz(y=librosa.effects.harmonic(audio), sr=sample_rate), axis=1)
-
-        features = [spectral_centroid, zero_crossing_rate, rms, spectral_bandwidth] + list(mfcc_mean) + list(chroma_mean) + list(spectral_contrast_mean) + list(mel_spectrogram) + list(tonnetz)
-
-        feature_names = ['spectral_centroid', 'zcr', 'rms', 'spectral_bandwidth'] + \
-                        [f'mfcc{i+1}' for i in range(len(mfcc_mean))] + \
-                        [f'chroma{i+1}' for i in range(len(chroma_mean))] + \
-                        [f'spectral_contrast{i+1}' for i in range(len(spectral_contrast_mean))] + \
-                        [f'mel{i+1}' for i in range(len(mel_spectrogram))] + \
-                        [f'tonnetz{i+1}' for i in range(len(tonnetz))]
-
-        return pd.DataFrame([features], columns=feature_names)
+        feature_names = [f'feature_{i+1}' for i in range(feature_vector.shape[0])]
+        return pd.DataFrame([feature_vector], columns=feature_names)
     
     except Exception as e:
         print(e)
@@ -66,18 +55,21 @@ def predict_audio_accent(file_path: str) -> str | None:
 
         new_audio_features_scaled = scaler.transform(new_audio_features)
 
-        predicted_class = model.predict(new_audio_features_scaled)
-        predicted_accent = label_encoder.inverse_transform(np.argmax(predicted_class, axis=1))
+        predicted_class_probabilities = model.predict(new_audio_features_scaled)
+        predicted_class_index = np.argmax(predicted_class_probabilities, axis=1)
+        predicted_accent = label_encoder.inverse_transform(predicted_class_index)
+        
+        prediction_confidence = np.max(predicted_class_probabilities) * 100
 
-        print(f"The predicted accent is: {predicted_accent[0].capitalize()}")
-        return predicted_accent[0].capitalize()
+        # print(f"The predicted accent is: {predicted_accent[0].capitalize()}")
+        # print(f"Prediction confidence: {prediction_confidence:.2f}%")
+
+        return predicted_accent[0].capitalize(), prediction_confidence
     
     except Exception as e:
         print(e)
-        return None
+        return None, None
 
 if __name__ == '__main__':
     file_path = 'input_files/nz.wav'
-    predicted_accent = predict_audio_accent(file_path)
-
-    print(f"The predicted accent is: {predicted_accent}")
+    predicted_accent, predicted_precent = predict_audio_accent(file_path)

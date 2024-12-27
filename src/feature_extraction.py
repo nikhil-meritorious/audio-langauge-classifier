@@ -1,3 +1,5 @@
+from transformers import Wav2Vec2Processor, Wav2Vec2Model
+import torch
 import librosa
 import numpy as np
 import pandas as pd
@@ -6,55 +8,40 @@ from sklearn.utils import shuffle
 from train_model import train_audio_model
 from tqdm import tqdm
 
+processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
+pre_trained_model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base-960h")
+
 def extract_features(directory: str) -> pd.DataFrame | None:
     try:
         features = []
-        for accent in tqdm(os.listdir(directory)):
-            print(f'extracting {accent}')
-            for audio_file in os.listdir(f'{directory}/{accent}'):
+        for accent in tqdm(os.listdir(directory), desc=f"Extraction started"):
+            accent_path = os.path.join(directory, accent)
+
+            for audio_file in os.listdir(accent_path):
                 if audio_file.endswith('.wav') or audio_file.endswith('.mp3'):
-                    file_path = os.path.join(f'{directory}/{accent}', audio_file)
-                    audio, sample_rate = librosa.load(file_path, sr=22050)
+                    file_path = os.path.join(accent_path, audio_file)
+                    try:
+                        audio, sample_rate = librosa.load(file_path, sr=16000)
 
-                    mfccs = librosa.feature.mfcc(y=audio, sr=sample_rate, n_mfcc=40)
-                    mfcc_mean = np.mean(mfccs.T, axis=0)
-                    spectral_centroid = np.mean(librosa.feature.spectral_centroid(y=audio, sr=sample_rate)[0])
-                    zero_crossing_rate = np.mean(librosa.feature.zero_crossing_rate(audio)[0])                  
-                    spectral_contrast_mean = np.mean(librosa.feature.spectral_contrast(y=audio, sr=sample_rate, n_bands=5), axis=1)
-                    chroma_mean = np.mean(librosa.feature.chroma_stft(y=audio, sr=sample_rate), axis=1)
-                    rms = np.mean(librosa.feature.rms(y=audio)[0])
-                    spectral_bandwidth = np.mean(librosa.feature.spectral_bandwidth(y=audio, sr=sample_rate))
-                    mel_spectrogram = np.mean(librosa.feature.melspectrogram(y=audio, sr=sample_rate, n_mels=128), axis=1)
-                    tonnetz = np.mean(librosa.feature.tonnetz(y=librosa.effects.harmonic(audio), sr=sample_rate), axis=1)
+                        inputs = processor(audio, sampling_rate=16000, return_tensors="pt", padding=True)
 
-                    temp_features = {
-                        "file": audio_file,
-                        "accent": accent.replace("_", " "),
-                        "spectral_centroid": spectral_centroid,
-                        "zcr": zero_crossing_rate,
-                        "rms": rms,
-                        "spectral_bandwidth": spectral_bandwidth
-                    }
-                        
-                    for index, mfcc in enumerate(mfcc_mean):
-                        temp_features[f'mfcc{index + 1}'] = mfcc
+                        with torch.no_grad():
+                            outputs = pre_trained_model(**inputs)
+                            embeddings = outputs.last_hidden_state
 
-                    for index, chroma in enumerate(chroma_mean):
-                        temp_features[f'chroma{index + 1}'] = chroma
+                        feature_vector = torch.mean(embeddings, dim=1).squeeze().numpy()
 
-                    for index, spectral_contrast in enumerate(spectral_contrast_mean):
-                        temp_features[f'spectral_contrast{index + 1}'] = spectral_contrast
-                                        
-                    for index, mel in enumerate(mel_spectrogram):
-                        temp_features[f'mel{index + 1}'] = mel
+                        temp_features = {"file": audio_file, "accent": accent.replace("_", " ")}
+                        for index, value in enumerate(feature_vector):
+                            temp_features[f'feature_{index + 1}'] = value
+
+                        features.append(temp_features)
                     
-                    for index, tonnetz_value in enumerate(tonnetz):
-                        temp_features[f'tonnetz{index + 1}'] = tonnetz_value
-
-                    features.append(temp_features)
+                    except Exception as audio_error:
+                        print(f"Error processing {file_path}: {audio_error}")
 
         return pd.DataFrame(features)
-            
+    
     except Exception as e:
         print(e)
         return None

@@ -2,8 +2,21 @@ from fastapi import FastAPI, UploadFile, status, File
 from fastapi.responses import JSONResponse
 from src.predict_accent import predict_audio_accent
 import os
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+origins = [
+    '*'
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 valid_extenstions = ["mp3", "wav"]
 upload_directory = "input_files"
@@ -29,14 +42,17 @@ def upload_file(audio_file: UploadFile = File(...)):
         with open(file_path, "wb") as buffer:
             buffer.write(audio_file.file.read())
 
-        predicted_accent = predict_audio_accent(file_path)
+        predicted_accent, predicted_precent = predict_audio_accent(file_path)
 
         return JSONResponse(
             status_code=status.HTTP_201_CREATED,
             content={
                 "success": True,
                 "message": "Audio classification successful",
-                "data": {"predicted_accent": predicted_accent if predicted_accent else "Unkown"}
+                "data": {
+                    "predicted_accent": predicted_accent if predicted_accent else "Unkown",
+                    "accuracy": predicted_precent
+                }
             }
         )
     

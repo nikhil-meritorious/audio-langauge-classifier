@@ -6,3 +6,5 @@ keras
 tqdm
 fastapi[standard]
 pydub
+torch
+transformers
